@@ -1,0 +1,28 @@
+:root {
+  color-scheme: light;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: #202722;
+  background: #f5f7f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+.signup-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; }
+.signup-card { width: min(100%, 480px); padding: 38px; border: 1px solid #e1e7df; border-radius: 16px; background: #fff; box-shadow: 0 16px 44px #263e320d; }
+.eyebrow { margin: 0 0 12px; color: #54734f; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; }
+h1 { margin: 0; font: 700 clamp(32px, 5vw, 44px)/1.15 "Segoe UI", sans-serif; letter-spacing: -1.8px; }
+.intro { margin: 12px 0 28px; color: #707970; font-size: 15px; line-height: 1.6; }
+label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+input { width: 100%; min-height: 48px; padding: 0 13px; border: 1px solid #cfd8ce; border-radius: 7px; color: inherit; font: inherit; }
+input:focus { outline: 3px solid #dce9d8; border-color: #54734f; }
+button { width: 100%; min-height: 48px; margin-top: 12px; border: 0; border-radius: 7px; background: #426441; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+button:hover { background: #345235; }
+button:disabled { opacity: .65; cursor: wait; }
+.message { min-height: 22px; margin: 12px 0 0; color: #707970; font-size: 13px; }
+.message.success { color: #315f34; }
+.message.error { color: #a33232; }
+
+@media (max-width: 520px) { .signup-card { padding: 27px 22px; } }

@@ -9,11 +9,13 @@ load_dotenv()
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "")
     cors_origins: str = os.getenv("CORS_ORIGINS", "*")
-    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "")
-    jwt_access_token_minutes: int = int(os.getenv("JWT_ACCESS_TOKEN_MINUTES", "60"))
-    app_env: str = os.getenv("APP_ENV", "production").lower()
-    billing_mode: str = os.getenv("BILLING_MODE", "disabled").lower()
-    jwt_issuer: str = os.getenv("JWT_ISSUER", "tender-client-api")
+    app_base_url: str = os.getenv("APP_BASE_URL", "http://localhost:8004").rstrip("/")
+    smtp_host: str = os.getenv("SMTP_HOST", "")
+    smtp_port: int = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username: str = os.getenv("SMTP_USERNAME", "")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "")
+    smtp_from_email: str = os.getenv("SMTP_FROM_EMAIL", "")
+    smtp_use_tls: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
 
 @lru_cache

@@ -39,127 +39,83 @@ class TenderDB:
     async def close(self):
         await self.pool.close()
 
-    async def ensure_subscription_schema(self):
-        schema = Path(__file__).with_name("subscription_schema.sql").read_text(encoding="utf-8")
+    async def ensure_email_updates_schema(self):
+        schema = Path(__file__).with_name("email_updates_schema.sql").read_text(encoding="utf-8")
         async with self.pool.acquire() as conn:
             await conn.execute(schema)
 
-    async def create_customer(self, email: str, password_hash: str):
+    async def request_email_updates_subscription(self, email: str, token_hash: str):
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO customer_accounts (email, password_hash)
-                VALUES ($1, $2)
-                RETURNING id, email, created_at
+                INSERT INTO email_update_subscriptions
+                    (email, status, confirmation_token_hash, confirmation_expires_at)
+                VALUES ($1, 'pending', $2, CURRENT_TIMESTAMP + INTERVAL '24 hours')
+                ON CONFLICT (email) DO UPDATE
+                SET status = CASE
+                        WHEN email_update_subscriptions.status = 'active' THEN 'active'
+                        ELSE 'pending'
+                    END,
+                    confirmation_token_hash = CASE
+                        WHEN email_update_subscriptions.status = 'active' THEN NULL
+                        ELSE EXCLUDED.confirmation_token_hash
+                    END,
+                    confirmation_expires_at = CASE
+                        WHEN email_update_subscriptions.status = 'active' THEN NULL
+                        ELSE EXCLUDED.confirmation_expires_at
+                    END,
+                    subscribed_at = CASE
+                        WHEN email_update_subscriptions.status = 'active'
+                            THEN email_update_subscriptions.subscribed_at
+                        ELSE NULL
+                    END,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id, email, status, subscribed_at
                 """,
                 email,
-                password_hash,
+                token_hash,
             )
             return dict(row)
 
-    async def get_customer_by_email(self, email: str):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, email, password_hash FROM customer_accounts WHERE email = $1",
-                email,
-            )
-            return dict(row) if row else None
-
-    async def get_customer_by_id(self, customer_id: int):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, email, created_at FROM customer_accounts WHERE id = $1",
-                customer_id,
-            )
-            return dict(row) if row else None
-
-    async def list_subscription_plans(self):
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT code, name, description, amount_minor, currency, billing_interval
-                FROM subscription_plans
-                WHERE is_active = TRUE
-                ORDER BY amount_minor, code
-                """
-            )
-            return [dict(row) for row in rows]
-
-    async def get_subscription_plan(self, plan_code: str):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT code, amount_minor, currency FROM subscription_plans WHERE code = $1 AND is_active = TRUE",
-                plan_code,
-            )
-            return dict(row) if row else None
-
-    async def create_subscription(self, customer_id: int, plan_code: str, provider_reference: str):
+    async def confirm_email_updates_subscription(self, token_hash: str):
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO subscriptions (customer_id, plan_code, provider_reference)
-                SELECT $1, code, $3
-                FROM subscription_plans
-                WHERE code = $2 AND is_active = TRUE
-                RETURNING id, customer_id, plan_code, status, billing_provider,
-                          current_period_start, current_period_end, created_at
-                """,
-                customer_id,
-                plan_code,
-                provider_reference,
-            )
-            return dict(row) if row else None
-
-    async def get_current_subscription(self, customer_id: int):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT s.id, s.plan_code, p.name AS plan_name, s.status,
-                       s.billing_provider, p.amount_minor, p.currency,
-                       p.billing_interval, s.current_period_start,
-                       s.current_period_end, s.created_at
-                FROM subscriptions s
-                JOIN subscription_plans p ON p.code = s.plan_code
-                WHERE s.customer_id = $1 AND s.status IN ('pending', 'active')
-                ORDER BY s.created_at DESC
-                LIMIT 1
-                """,
-                customer_id,
-            )
-            return dict(row) if row else None
-
-    async def activate_mock_subscription(self, subscription_id: int, customer_id: int):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                UPDATE subscriptions
-                SET status = 'active',
-                    current_period_start = CURRENT_TIMESTAMP,
-                    current_period_end = CURRENT_TIMESTAMP + INTERVAL '1 month',
+                UPDATE email_update_subscriptions
+                SET status = 'active', subscribed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1 AND customer_id = $2 AND status = 'pending'
-                RETURNING id, plan_code, status, billing_provider,
-                          current_period_start, current_period_end, created_at
+                WHERE confirmation_token_hash = $1
+                  AND confirmation_expires_at > CURRENT_TIMESTAMP
+                  AND status = 'pending'
+                RETURNING id, email
                 """,
-                subscription_id,
-                customer_id,
+                token_hash,
+            )
+            if row:
+                return dict(row)
+            row = await conn.fetchrow(
+                """
+                SELECT id, email FROM email_update_subscriptions
+                WHERE confirmation_token_hash = $1
+                  AND confirmation_expires_at > CURRENT_TIMESTAMP
+                  AND status = 'active'
+                """,
+                token_hash,
             )
             return dict(row) if row else None
 
-    async def cancel_subscription(self, customer_id: int):
+    async def finish_email_updates_confirmation(self, token_hash: str):
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
+            await conn.execute(
                 """
-                UPDATE subscriptions
-                SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP,
+                UPDATE email_update_subscriptions
+                SET confirmation_token_hash = NULL,
+                    confirmation_expires_at = NULL,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE customer_id = $1 AND status IN ('pending', 'active')
-                RETURNING id, plan_code, status, billing_provider,
-                          current_period_start, current_period_end, cancelled_at
+                WHERE confirmation_token_hash = $1 AND status = 'active'
                 """,
-                customer_id,
+                token_hash,
             )
-            return dict(row) if row else None
 
     async def list_tenders(
         self,
